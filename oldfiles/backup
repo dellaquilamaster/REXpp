@@ -1,0 +1,99 @@
+ TPolyLine3D * LeftOuterFrameBorder = new TPolyLine3D(2);
+  TPolyLine3D * RightOuterFrameBorder = new TPolyLine3D(2);
+  TPolyLine3D * TopOuterFrameBorder = new TPolyLine3D(2);
+  TPolyLine3D * BottomOuterFrameBorder = new TPolyLine3D(2);
+  
+  LeftOuterFrameBorder->SetPoint(0,(TCenters[0][0]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[0][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[0][0]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());
+  LeftOuterFrameBorder->SetPoint(1,(TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());
+  RightOuterFrameBorder->SetPoint(0,(TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());
+  RightOuterFrameBorder->SetPoint(1,(TCenters[TStrips_number-1][TStrips_number-1]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[TStrips_number-1][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[TStrips_number-1][TStrips_number-1]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());  
+  TopOuterFrameBorder->SetPoint(0,(TCenters[0][0]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[0][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[0][0]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());
+  TopOuterFrameBorder->SetPoint(1,(TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[TStrips_number-1][0]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());  
+  BottomOuterFrameBorder->SetPoint(0,(TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[0][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());
+  BottomOuterFrameBorder->SetPoint(1,(TCenters[TStrips_number-1][TStrips_number-1]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor).Y(),(TCenters[TStrips_number-1][TStrips_number-1]-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).X(),
+                                 (TCenters[TStrips_number-1][TStrips_number-1]+(TDeadLayer+TFrame_width+TPixelTrue_semi)*TYversor-(TDeadLayer+TFrame_width+TPixelTrue_semi)*TXversor).Z());  
+
+  /*  
+  TLatex * FirstFront = new TLatex((TCenters[0][0]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).Y(),(TCenters[0][0]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).X(),"0");
+  TLatex * LastFront = new TLatex((TCenters[TStrips_number-1][0]+TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).Y(),(TCenters[TStrips_number-1][0]+TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).X(),Form("%d",TStrips_number-1));
+  TLatex * FirstBack = new TLatex((TCenters[0][0]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).Y(),(TCenters[0][0]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).X(),"0");
+  TLatex * LastBack = new TLatex((TCenters[0][TStrips_number-1]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).Y(),(TCenters[0][TStrips_number-1]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi).X(),Form("%d",TStrips_number-1));
+  */
+
+  TPolyLine3D * LeftPixelBorder[TStrips_number][TStrips_number];
+  TPolyLine3D * RightPixelBorder[TStrips_number][TStrips_number];
+  TPolyLine3D * BottomPixelBorder[TStrips_number][TStrips_number];
+  TPolyLine3D * TopPixelBorder[TStrips_number][TStrips_number];
+  for(Int_t i=0; i<TStrips_number; i++)
+  {
+    for(Int_t j=0; j<TStrips_number; j++)
+    {
+      TVector3 TopLeftCorner     = TCenters[i][j]-TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi;
+      TVector3 TopRightCorner    = TCenters[i][j]+TYversor*TPixelEffective_semi+TXversor*TPixelEffective_semi;
+      TVector3 BottomLeftCorner  = TCenters[i][j]-TYversor*TPixelEffective_semi-TXversor*TPixelEffective_semi;
+      TVector3 BottomRightCorner = TCenters[i][j]+TYversor*TPixelEffective_semi-TXversor*TPixelEffective_semi;
+      
+      LeftPixelBorder[i][j]  =new TPolyLine3D(2);
+      RightPixelBorder[i][j] =new TPolyLine3D(2);
+      BottomPixelBorder[i][j]=new TPolyLine3D(2);
+      TopPixelBorder[i][j]   =new TPolyLine3D(2);
+            
+      LeftPixelBorder[i][j]->SetPoint(0,TopLeftCorner.Y(),TopLeftCorner.X(),TopLeftCorner.Z());
+      LeftPixelBorder[i][j]->SetPoint(1,BottomLeftCorner.Y(),BottomLeftCorner.X(),BottomLeftCorner.Z());
+      RightPixelBorder[i][j]->SetPoint(0,TopRightCorner.Y(),TopRightCorner.X(),TopRightCorner.Z());
+      RightPixelBorder[i][j]->SetPoint(1,BottomRightCorner.Y(),BottomRightCorner.X(),BottomRightCorner.Z());
+      BottomPixelBorder[i][j]->SetPoint(0,TopLeftCorner.Y(),TopLeftCorner.X(),TopLeftCorner.Z());
+      BottomPixelBorder[i][j]->SetPoint(1,BottomLeftCorner.Y(),BottomLeftCorner.X(),BottomLeftCorner.Z());
+      TopPixelBorder[i][j]->SetPoint(0,TopLeftCorner.Y(),TopLeftCorner.X(),TopLeftCorner.Z());
+      TopPixelBorder[i][j]->SetPoint(1,TopRightCorner.Y(),TopRightCorner.X(),TopRightCorner.Z());
+    }
+  }  
+  
+  if(strstr(draw_opt,"SAME")==0 && strstr(draw_opt,"same")==0) {
+    TCanvas * c1 = new TCanvas("c1","3D view", 600,600);
+    TPolyMarker3D * TheCenter = new TPolyMarker3D(1);
+    TheCenter->SetPoint(0,0,0,0);
+    TheCenter->SetMarkerSize(2);
+    TheCenter->SetMarkerStyle(3);
+    TheCenter->Draw();
+  }
+  
+  LeftOuterFrameBorder->SetLineColor(kRed);
+  RightOuterFrameBorder->SetLineColor(kRed);
+  TopOuterFrameBorder->SetLineColor(kRed);
+  BottomOuterFrameBorder->SetLineColor(kRed);
+  
+  LeftOuterFrameBorder->Draw("same");
+  RightOuterFrameBorder->Draw("same");
+  TopOuterFrameBorder->Draw("same");
+  BottomOuterFrameBorder->Draw("same");
+  
+  /*
+  LastFront->SetTextAlign(kHAlignRight);
+  FirstBack->SetTextAlign(kHAlignRight+kVAlignTop);
+  LastBack->SetTextAlign(kHAlignRight+kVAlignTop);
+  FirstFront->Draw();
+  LastFront->Draw();
+  FirstBack->Draw();
+  LastBack->Draw();
+  */
+  
+  for(Int_t i=0; i<TStrips_number; i++)
+  {
+    for(Int_t j=0; j<TStrips_number; j++)
+    {
+      LeftPixelBorder[i][j]->Draw("same");
+      RightPixelBorder[i][j]->Draw("same");
+      BottomPixelBorder[i][j]->Draw("same");
+      TopPixelBorder[i][j]->Draw("same");
+    }
+  }
+  
+  return; 

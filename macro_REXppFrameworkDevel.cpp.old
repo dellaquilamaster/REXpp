@@ -1,0 +1,853 @@
+/* THE REX++ Framework
+ * debugging version
+ * Created by: Daniele Dell'Aquila
+ * e-mail:     daniele.dellaquila@irb.hr
+ * 
+ * 26/04/2019
+ * Implementation of the framework core scratch as a root macro
+ * Later, this code will be encapsulated into a proper framework
+ * to handle both simulation and data analysis of resonant gas target
+ * reaction studies.
+ * The framework is intended as an extension to more complicated cases, and 
+ * a more user friendly version using the C++ language, of the original 
+ * REX simulation code by N. Curtis: N. Curtis and J. Walshe, Nucl. Instr. Meth. A 797 (2015) 44.
+ * 
+ */
+
+// #define VERBOSE_MODE
+#define GRAPHICAL_MODE
+// #define WRITING_TO_DISK
+
+#include <math.h>
+#include <TEveStraightLineSet.h>
+
+#include "detectors/DetectionSetup/TDetectionSetup.h"
+#include "detectors/DetectionSetup/TDetectionUnit.h"
+#include "LISETools/nuclear_masses.h"
+#include "LISETools/EnergyLossModule.h"
+#include "LISETools/RelativisticKinematics.h"
+#include "detectors/Strip/TStripCluster.h"
+
+const double fStartTime=clock();
+
+void PrintPercentage(int jentry, int nentries)
+{
+  double time_elapsed = (double)(clock() - fStartTime)/CLOCKS_PER_SEC;
+  std::cout << "  Percentage = " << std::fixed << std::setprecision(1) << std::setw(5) << (100*double(jentry)/nentries) << " %";
+  std::cout << "   [";
+  int printindex=0;
+  for(; printindex<int(100*double(jentry)/nentries); printindex+=5) std::cout << "=";
+  for(; printindex<100; printindex+=5) std::cout << " ";
+  std::cout << "]   " << "elapsed time " << std::setprecision(1) <<
+  (time_elapsed<60 ? time_elapsed : (time_elapsed<3600 ? time_elapsed/60 : time_elapsed/3600)) <<
+  (time_elapsed<60 ? " s; " : (time_elapsed<3600 ? " m; " : " h; "));
+  if(jentry>0) {
+    double time_remaining = (time_elapsed/jentry)*(nentries-jentry);
+    std::cout << " estimated remaining time " << std::setprecision(1) <<
+    (time_remaining<60 ? time_remaining : (time_remaining<3600 ? time_remaining/60 : time_remaining/3600)) <<
+    (time_remaining<60 ? " s      " : (time_remaining<3600 ? " m      " : " h      "));
+  }
+  std::cout << "\r";
+  std::cout.flush();
+}
+
+void macro_REXppFrameworkDevel ()
+{
+  const double GasPressure=355; //mbar //In the LNL experiment: 873 mbar, 869 mbar, 579 mbar, 253 mbar, 243 mbar, 355 mbar, 690 mbar
+  const std::string GasMaterial("He"); // gas material
+  const std::string WindowMaterial("Havar"); //material of the entrance gas window
+  const double WindowThickness=2.0; //Thickness of the solid window in um
+  const double BeamEnergy=58; //MeV //In the LNL experiment: 69 MeV, 59 MeV, 48 MeV
+  const int Zbeam=10;
+  const int Abeam=20;
+  const int Ztarget=2;
+  const int Atarget=4;
+  const double BeamCenterX=0.; // position of the beam impinging on the entrance window
+  const double BeamCenterY=0.; // position of the beam impinging on the entrance window
+  const double LimitX=10; // Limit of the useful volume along the X-axis (cm)
+  const double LimitY=10; // Limit of the useful volume along the Y-axis (cm)
+  const double LimitZ=30; // Limit of the useful volume along the Z-axis (cm)
+  const double CalculationStep=0.1; // Calculation step (cm)
+  const int Zejectile=2;
+  const int Aejectile=4;
+  const int Zresidual=Zbeam+Ztarget-Zejectile;
+  const int Aresidual=Abeam+Atarget-Aejectile;
+  const int Zcompound=Zbeam+Ztarget;
+  const int Acompound=Abeam+Atarget;
+  const std::string EntranceChannel("Ne20_He4");
+  const std::string ExitChannel("Ne20_He4");
+  const double Exresidual=0.; // Excitation energy populated in the heavy residual //In the LNL experiment is 20Ne
+  const int FrameworkIterations=10; // Number of times the calculation is repeated
+  const double CompoundEx=17.0; // excitation energy of the compound in MeV. This sets the distance travelled by the projectile before interacting with the target.
+  double EffectiveCompoundEx=CompoundEx; // excitation energy reached at the end of the iteration process
+  const double UMAToMeV=931.4936148; // Conversion factor 1u -> 1 MeV/c2
+  const double cmToum=10000.;
+  const double DetectorThreshold=0.1; // Detection threshold in MeV
+  const double DetectorEres=0.0; // Detector energy resolution
+  //
+  // End of input data and constant initializations
+  
+  // Construction of the framework
+  //
+  nuclear_masses NucData("LISETools/input/masses.conf"); //Loading nuclear masses from up-to-date database
+  RelativisticKinematics KinematicModule; //Module for kinematic calculations
+  EnergyLossModule LISELossModule("LISETools/"); //Module for energy loss calculations
+  //
+  // Masses of the nuclei involved
+  const double MassBeam=NucData.get_mass_Z_A(Zbeam,Abeam); //mass of the beam in MeV/c2
+  const double MassBeam_uma=NucData.get_mass_Z_A_uma(Zbeam,Abeam); //mass of the beam in amu
+  const double MassTarget=NucData.get_mass_Z_A(Ztarget,Atarget); // mass of the target in MeV/c2
+  const double MassTarget_uma=NucData.get_mass_Z_A_uma(Ztarget,Atarget); // mass of the target in amu
+  const double MassEjectile=NucData.get_mass_Z_A(Zejectile,Aejectile); //mass of the light ejectile in MeV/c2
+  const double MassEjectile_uma=NucData.get_mass_Z_A_uma(Zejectile,Aejectile); //mass of the light ejectile in amu
+  const double MassResidual=NucData.get_mass_Z_A(Zresidual,Aresidual)+Exresidual; //mass of the heavy residual in MeV/c2
+  const double MassResidual_uma=NucData.get_mass_Z_A_uma(Zresidual,Aresidual)+Exresidual/UMAToMeV; //mass of the heavy residual in amu
+  const double MassCompound=NucData.get_mass_Z_A(Zcompound,Acompound)+CompoundEx; //mass of the compound in MeV/c2
+  const double MassCompound_uma=NucData.get_mass_Z_A_uma(Zcompound,Acompound)+CompoundEx/UMAToMeV; //mass of the compound in amu
+  const double MassCompound_gs=NucData.get_mass_Z_A(Zcompound,Acompound); //mass of the compound in its ground state in MeV/c2
+  //
+  const double BeamMomentumModuleInit=sqrt(pow(BeamEnergy+MassBeam,2)-pow(MassBeam,2)); //Initial module of the beam momentum
+  const double ParticleEmissionThreshold=MassEjectile+MassResidual-MassCompound_gs;
+  const TVector3 BeamMomentumInit=BeamMomentumModuleInit*TVector3(0,0,1);
+  const TLorentzVector BeamMomentumEnergyInit(BeamMomentumInit,BeamEnergy+MassBeam); //Initial beam Momentum/Energy quadri-vector
+  const TLorentzVector TargetMomentumEnergy(0.,0.,0.,MassTarget); // Target Momentum/Energy quadri-vector
+  double ExAvailable = (BeamMomentumEnergyInit+TargetMomentumEnergy).M()-MassCompound_gs; // Excitation energy available in the collision
+  if(ExAvailable<CompoundEx) {
+    printf("Error: insufficient beam energy to reach the requested excitation energy, Aborting!\n");
+    exit(2);
+  }
+  if(CompoundEx<ParticleEmissionThreshold) {
+    printf("Error: the selected excitation energy is below the particle-emission threshold, Aborting!\n");
+    exit(3);
+  }  
+  //
+  TVector3 XVersor(0,1,0); //Versor identifying the X-axis in the laboratory frame (pointing towards the top)
+  TVector3 YVersor(1,0,0); //Versor identifying the Y-axis in the laboratory frame (pointing towards the right if looking upstream) 
+  TVector3 ZVersor(0,0,1); //Versor identifying the beam axis in the laboratory frame
+  //
+  TRandom3 RandomGen(0); //Creation of the random generator
+  gRandom->SetSeed(0);
+  TF1 * Mg24_ang_uniform = new TF1 ("Mg24_ang_uniform","sin(x)",0,TMath::Pi()); //uniform angular distribution for the compound nucleus decay in the cm
+  //
+  // Creation of the detector system
+  TDetectionSetup * DetectorCluster = new TDetectionSetup("cluster");
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,7.,7. ,-90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 1 at (0.,7.,7.), -90 deg tilt angle, 16 strips, 0.3125 strip width, 0.01 inter-strip width, 0.2 frame width, 0.2 dead layer
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,7.,14.,-90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 2
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,7.,21.,-90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 3
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,4.,27.,-20.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 4
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,-4.,27.,20.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 5
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,-7.,21.,90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 6
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,-7.,14.,90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 7
+  DetectorCluster->RegisterUnit(new TStripDetector (0.,-7.,7. ,90.*TMath::DegToRad(),16,0.3125,0.01,0.2,0.2) ); //DSSSD 8
+#ifdef GRAPHICAL_MODE
+  //
+  DetectorCluster->Draw3D();
+  //Drawing mother volume
+  TEveBox * MotherVolume = new TEveBox("MotherVolume");
+  MotherVolume->SetVertex(0,-LimitX,LimitY,0);
+  MotherVolume->SetVertex(1,LimitX,LimitY,0);
+  MotherVolume->SetVertex(2,LimitX,-LimitY,0);
+  MotherVolume->SetVertex(3,-LimitX,-LimitY,0);
+  MotherVolume->SetVertex(4,-LimitX,LimitY,LimitZ);
+  MotherVolume->SetVertex(5,LimitX,LimitY,LimitZ);
+  MotherVolume->SetVertex(6,LimitX,-LimitY,LimitZ);
+  MotherVolume->SetVertex(7,-LimitX,-LimitY,LimitZ);
+  MotherVolume->SetMainColor(kCyan);
+  MotherVolume->SetMainTransparency(99);
+  gEve->AddElement(MotherVolume);
+  gEve->DoRedraw3D();
+  
+  //
+#endif
+  //
+  // Build output trees
+#ifdef WRITING_TO_DISK
+  const std::string FileOutName(Form("output/REXpp_%s_%s_%s%.2fum_%.0fmbar_%.0fMeV_Ex%.1f_%devents.root",EntranceChannel.c_str(),ExitChannel.c_str(),WindowMaterial.c_str(),WindowThickness,GasPressure,BeamEnergy,CompoundEx,FrameworkIterations));
+  TFile * FileOut = new TFile(FileOutName.c_str(),"RECREATE"); //Output file
+  TTree * TreeDetected = new TTree("t","Tree containing data as detected by a DSSSD cluster");
+  Int_t cluster_fmulti;
+  Int_t cluster_fmulti_detected;
+  Double_t cluster_fEx;
+  Bool_t cluster_fIsDetected[10];
+  Int_t cluster_fnumtel[10];
+  Int_t cluster_fnumstripf[10];
+  Int_t cluster_fnumstripb[10];
+  Double_t cluster_fKinEnergy[10];
+  Double_t cluster_fThetaOrigin[10];
+  Double_t cluster_fPhiOrigin[10];
+  Double_t cluster_fKinEnergyOrigin[10];
+  Double_t cluster_fKinEnergyOriginCms[10];
+  Double_t cluster_fThetaOriginCms[10];
+  Double_t cluster_fXDetHit[10];
+  Double_t cluster_fYDetHit[10];
+  Double_t cluster_fZDetHit[10];
+  Int_t cluster_fZ[10];
+  Int_t cluster_fA[10];
+  TreeDetected->Branch("cluster.fmulti",&cluster_fmulti,"cluster.fmulti/I");
+  TreeDetected->Branch("cluster.fmulti_detected",&cluster_fmulti_detected,"cluster_fmulti_detected/I");
+  TreeDetected->Branch("cluster.fEx",&cluster_fEx,"fEx/D");
+  TreeDetected->Branch("cluster.fIsDetected",cluster_fIsDetected,"cluster.fIsDetected[cluster.fmulti]/O");
+  TreeDetected->Branch("cluster.fnumtel",cluster_fnumtel,"cluster.fnumtel[cluster.fmulti]/I");
+  TreeDetected->Branch("cluster.fnumstripf",cluster_fnumstripf,"cluster.fnumstripf[cluster.fmulti]/I");
+  TreeDetected->Branch("cluster.fnumstripb",cluster_fnumstripb,"cluster.fnumstripb[cluster.fmulti]/I");
+  TreeDetected->Branch("cluster.fKinEnergy",cluster_fKinEnergy,"cluster.fKinEnergy[cluster.fmulti]/D");
+  TreeDetected->Branch("cluster.fXDetHit",cluster_fXDetHit,"cluster.fXDetHit[cluster.fmulti]/D");
+  TreeDetected->Branch("cluster.fYDetHit",cluster_fYDetHit,"cluster.fYDetHit[cluster.fmulti]/D");
+  TreeDetected->Branch("cluster.fZDetHit",cluster_fZDetHit,"cluster.fZDetHit[cluster.fmulti]/D");
+  TreeDetected->Branch("cluster.fKinEnergyOrigin", cluster_fKinEnergyOrigin, "cluster.fKinEnergyOrigin[cluster.fmulti]/D"); //Kinetic energy of the particle as emitted by the compound
+  TreeDetected->Branch("cluster.fThetaOrigin", cluster_fThetaOrigin, "cluster.fThetaOrigin[cluster.fmulti]/D"); //Theta of the particle as emitted by the compound
+  TreeDetected->Branch("cluster.fPhiOrigin", cluster_fPhiOrigin, "cluster.fPhiOrigin[cluster.fmulti]/D"); //Phi of the particle as emitted by the compound
+  TreeDetected->Branch("cluster.fKinEnergyOriginCms", cluster_fKinEnergyOriginCms, "cluster.fKinEnergyOriginCms[cluster.fmulti]/D"); //Kinetic energy of the particle as emitted by the compound in the Center of mass system
+  TreeDetected->Branch("cluster.fThetaOriginCms", cluster_fThetaOriginCms, "cluster.fThetaOriginCms[cluster.fmulti]/D"); //Theta of the particle as emitted by the compound in the Center of mass system
+  TreeDetected->Branch("cluster.fZ",cluster_fZ,"cluster.fZ[cluster.fmulti]/I"); //Charge of the particle
+  TreeDetected->Branch("cluster.fA",cluster_fA,"cluster.fA[cluster.fmulti]/I"); //Mass of the particle
+  TreeDetected->SetAutoSave(500000);
+#endif
+  //
+  // End of framework construction
+  
+#ifdef VERBOSE_MODE
+  printf("*** Framework REX++ correctly created\n");
+  printf("Projectile: Z=%d A=%d (mass=%.3f MeV/c2)\n", Zbeam, Abeam, MassBeam);
+  printf("Target: Z=%d A=%d (mass=%.3f MeV/c2)\n", Ztarget, Atarget, MassTarget);
+  printf("Ejectile: Z=%d A=%d (mass=%.3f MeV/c2)\n", Zejectile, Aejectile, MassEjectile);
+  printf("Residual: Z=%d A=%d (mass=%.3f MeV/c2, Ex=%.2f)\n", Zresidual, Aresidual, MassResidual, Exresidual);
+  printf("Ebeam=%.2f MeV\n", BeamEnergy);
+  printf("Calculation step = %.1f mm\n", CalculationStep*10);
+  printf("Gas material = %s (%.0f mbar)\n", GasMaterial.c_str(), GasPressure);
+  printf("**************************************************\n\n");
+#endif
+  
+  for(int ientry=0; ientry<FrameworkIterations; ientry++)
+  {
+    //
+    //The following framework executes a step-by-step calculation with a fixed step
+    //For each step, three quantities are calculated: (1) the energy loss in the step, (2) the energy straggling, (3) the angular straggling
+    //After interaction, the 2 fragments are tracked till one of the follwing events occur: (1) the particle is stopped in the gas, (2) the particle reaches a detector, (3) the particle reaches the limit of the useful volume
+    //
+    
+    if(ientry%100==0) {
+      PrintPercentage(ientry, FrameworkIterations);
+    }
+    
+#ifdef VERBOSE_MODE
+    printf("*** Beginning of iteration %d\n", ientry);
+    printf("**************************************************\n\n");
+#endif
+    
+    //Initial beam energy, position and direction of the beam
+    double EffectiveBeamEnergy=BeamEnergy; //NOTE: the effective beam energy can be different with respect to the nominal one  
+    
+    //Pre and Post step quantities of the beam
+    //
+    //Position of the beam before the entrance window
+    TVector3 PreStepBeamLocation(BeamCenterY,BeamCenterX,-WindowThickness/cmToum); //Absolute position of the beam with respect to the exit face of the entrance window in cm (Entrance Window reference frame)
+    //
+    //Momentum of the beam prior to interact with the entrance window
+    double PreStepBeamMomentumModule=sqrt(pow(EffectiveBeamEnergy+MassBeam,2)-pow(MassBeam,2));
+    TVector3 PreStepBeamMomentum(PreStepBeamMomentumModule*ZVersor);
+    TVector3 PreStepBeamDirection(PreStepBeamMomentum.Unit());
+    double PreStepBeamKineticEnergy=EffectiveBeamEnergy;
+    //
+    double PostStepBeamMomentumModule;
+    TVector3 PostStepBeamMomentum;
+    TVector3 PostStepBeamDirection;
+    TVector3 PostStepBeamLocation;
+    double PostStepBeamKineticEnergy;
+    //
+    
+    //
+    //Interaction of the beam with the entrance window
+    //
+    //Calculation of beam momentum after the interaction with the entrance window
+    double AngularStragglingWindow=0.; //NOTE: Here we must add an angular straggling
+    //Since we are doing only one step in the entrance window, the lenght of this step will be determined to completely pass the target (including angular straggling)
+    double WindowEffectiveThickness=WindowThickness/cos(AngularStragglingWindow); //Effective distance travelled in the entrance window by the incident beam    
+    double ELossEntranceWindow = LISELossModule.GetEnergyLoss(Zbeam,Abeam,PreStepBeamKineticEnergy,WindowMaterial.c_str(),WindowEffectiveThickness); //Energy loss of the beam in the entrance window
+    double EnergyStragglingWindow=0.; //NOTE: Here we must add an energy straggling
+    PostStepBeamKineticEnergy=PreStepBeamKineticEnergy-ELossEntranceWindow+EnergyStragglingWindow; //calculation of degraded energy
+    PostStepBeamMomentumModule=sqrt(pow(PostStepBeamKineticEnergy+MassBeam,2)-pow(MassBeam,2)); //calculation of degraded momentum module
+    PostStepBeamMomentum=PostStepBeamMomentumModule*PreStepBeamDirection; //calculation of degraded momentum vector
+    //
+    //Angular straggling of the beam in the entrance window
+    PostStepBeamMomentum.Rotate(AngularStragglingWindow,PreStepBeamDirection.Orthogonal()); //angle straggling (rotation around a vector perpendicular to the pre-step vector) 
+    PostStepBeamMomentum.Rotate(RandomGen.Uniform(0,TMath::Pi()),PreStepBeamDirection); //randomization of the straggling direction around the original vector
+    PostStepBeamDirection=PostStepBeamMomentum.Unit(); //Post-step vector
+    //
+    //Calculation of beam position after the entrance window, if no straggling occurs -> (0,0,0). In any other case, the beam is located at the exit surface of the foil.
+    PostStepBeamLocation=PreStepBeamLocation+WindowEffectiveThickness/cmToum*PostStepBeamDirection;
+    //
+    //The beam as a quadri-vector after the entrance window
+    const TLorentzVector BeamMomentumEnergyAfterWindow(PostStepBeamMomentum,PostStepBeamKineticEnergy+MassBeam);
+    //
+    //After the interaction of the beam with the entrance window I have the following quantities:
+    //PostStepBeamMomentum = The beam momentum after the last step as a TVector3
+    //PostStepBeamMomentumModule = Its module after the last step
+    //PreStepBeamMomentum = The beam momentum before the last step as a TVector3
+    //PreStepBeamMomentumModule = Its module before the last step
+    //PostStepBeamLocation = The current beam position as a TVector3
+    //PostStepBeamDirection = Direction of the beam after the last step as a TVector3
+    //PreStepBeamDirection = Direction of the beam before the last step as a TVector3
+    //PostStepBeamKineticEnergy = Energy of the beam after the last step of calculation
+    //BeamMomentumEnergyAfterWindow = quadri-vector representing the beam after the entrace window
+    //
+#ifdef GRAPHICAL_MODE
+    TEveStraightLineSet * TrackBeam = new TEveStraightLineSet("TrackBeam");
+    TrackBeam->SetMainColor(kWhite);
+#endif
+    
+    ExAvailable=(BeamMomentumEnergyAfterWindow+TargetMomentumEnergy).M()-MassCompound_gs; // Excitation energy available in the collision
+    if(ExAvailable<CompoundEx) {
+      printf("Error: insufficient beam energy to reach the requested excitation energy, Aborting!\n");
+      exit(2);
+    }
+    
+#ifdef VERBOSE_MODE
+    printf("*** Entrance Window\n");
+    printf("material: %s\n", WindowMaterial.c_str());
+    printf("ELoss entrance window: %f MeV\n", ELossEntranceWindow);
+    printf("Straggling angle: %f deg\n", AngularStragglingWindow*TMath::DegToRad());
+    printf("Momentum pre step: (%f, %f, %f) MeV/c\n", PreStepBeamMomentum.X(), PreStepBeamMomentum.Y(), PreStepBeamMomentum.Z());
+    printf("Momentum post step: (%f, %f, %f) MeV/c\n", PostStepBeamMomentum.X(), PostStepBeamMomentum.Y(), PostStepBeamMomentum.Z());
+    printf("**************************************************\n\n");
+    getchar();
+#endif
+    
+    //
+    //Iterations till the Ex is reached
+    //
+    double BeamDegradationStep=CalculationStep;
+    //
+    //Setting Pre-Step to the previous Post-Step
+    PreStepBeamMomentumModule=PostStepBeamMomentumModule;
+    PreStepBeamMomentum=PostStepBeamMomentum;
+    PreStepBeamDirection=PostStepBeamDirection;
+    PreStepBeamLocation=PostStepBeamLocation;
+    PreStepBeamKineticEnergy=PostStepBeamKineticEnergy;
+    //
+    while(1) {
+      //
+      //Check if the beam is inside the mother volume
+      if(fabs(PreStepBeamLocation.X())>LimitX || fabs(PreStepBeamLocation.Y())>LimitY || fabs(PreStepBeamLocation.Z())>LimitZ) {
+        printf("Error: beam escaped from the mother volume without reaching the required Ex, aborting!\n");
+        exit(1);
+      }
+      //
+      
+      //
+      //Calculation of energy degradation and straggling
+      //
+      //Energy loss in the current step
+      double ELossStep = LISELossModule.GetEnergyLoss(Zbeam,Abeam,PreStepBeamKineticEnergy,Form("%s%.0fmbar",GasMaterial.c_str(),GasPressure),BeamDegradationStep*cmToum); //Energy loss of the beam in the current step of calculation
+      //Energy straggling in the current step
+      double EnergyStraggling=0.; //NOTE: Here we must add an energy straggling
+      //Angular straggling in the current step
+      double AngularStraggling=0.; //NOTE: Here we must add an angular straggling
+      //
+      //Calculation of the post-step quantities
+      PostStepBeamKineticEnergy=PreStepBeamKineticEnergy-ELossStep+EnergyStraggling; //calculation of degraded energy
+      PostStepBeamMomentumModule=sqrt(pow(PostStepBeamKineticEnergy+MassBeam,2)-pow(MassBeam,2)); //calculation of degraded momentum module
+      PostStepBeamMomentum=PostStepBeamMomentumModule*PreStepBeamDirection; //calculation of degraded momentum vector
+      PostStepBeamMomentum.Rotate(AngularStraggling,PreStepBeamDirection.Orthogonal()); //angle straggling (rotation around a vector perpendicular to the pre-step vector) 
+      PostStepBeamMomentum.Rotate(RandomGen.Uniform(0,TMath::Pi()),PreStepBeamDirection); //randomization of the straggling direction around the original vector
+      PostStepBeamDirection=PostStepBeamMomentum.Unit(); //Post-step vector
+      //Calculation of beam position after the calculation step
+      PostStepBeamLocation=PreStepBeamLocation+BeamDegradationStep*PostStepBeamDirection;
+      
+      //Excitation energy reached in the compound nucleus
+      TLorentzVector PostStepBeamMomentumEnergy(PostStepBeamMomentum,PostStepBeamKineticEnergy+MassBeam);
+      double CurrCompoundEx=(PostStepBeamMomentumEnergy+TargetMomentumEnergy).M()-MassCompound_gs;
+
+#ifdef VERBOSE_MODE
+      printf("*** Calculation Step\n");
+      printf("material: %s\n", GasMaterial.c_str());
+      printf("ELoss step: %f MeV\n", ELossStep);
+      printf("Straggling angle: %f deg\n", AngularStraggling*TMath::RadToDeg());
+      printf("Ekin beam: %f MeV\n", PostStepBeamKineticEnergy);
+      printf("Momentum pre step: (%f, %f, %f) MeV/c\n", PreStepBeamMomentum.X(), PreStepBeamMomentum.Y(), PreStepBeamMomentum.Z());
+      printf("Momentum post step: (%f, %f, %f) MeV/c\n", PostStepBeamMomentum.X(), PostStepBeamMomentum.Y(), PostStepBeamMomentum.Z());
+      printf("Post Step Beam location: (%f, %f, %f) cm\n", PostStepBeamLocation.X(), PostStepBeamLocation.Y(), PostStepBeamLocation.Z());
+      printf("Ex(Compound): %.3f MeV\n", CurrCompoundEx);
+      printf("**************************************************\n\n");
+#endif
+      
+      //Check if Ex is reached
+      //Ex is reached within 1 keV of precision
+      //If the current excitation energy is lower than the required excitation energy -> 
+      if(fabs(CurrCompoundEx-CompoundEx)<0.001) {
+        //Reached the required excitation energy -> formation of the compound nucleus
+#ifdef VERBOSE_MODE
+        printf("*** Excitation energy reached Ex=%.2f\n", CurrCompoundEx);
+        printf("**************************************************\n\n");
+        getchar();
+#endif
+        EffectiveCompoundEx=CurrCompoundEx;
+        break;
+      } else if (CurrCompoundEx<CompoundEx) {
+        //The required excitation energy has been passed, undo last step and re-do it with half of its length
+        BeamDegradationStep/=2.;
+        continue;
+      }
+      
+      //The required excitation energy is not reached, I go to the next step
+      //To conclde the step -> Setting Pre-Step to the previous Post-Step
+#ifdef GRAPHICAL_MODE
+TrackBeam->AddLine(-PreStepBeamLocation.Y(),PreStepBeamLocation.X(),PreStepBeamLocation.Z(),-PostStepBeamLocation.Y(),PostStepBeamLocation.X(),PostStepBeamLocation.Z());     
+#endif
+      PreStepBeamMomentumModule=PostStepBeamMomentumModule;
+      PreStepBeamMomentum=PostStepBeamMomentum;
+      PreStepBeamDirection=PostStepBeamDirection;
+      PreStepBeamLocation=PostStepBeamLocation;
+      PreStepBeamKineticEnergy=PostStepBeamKineticEnergy;
+      //
+    }
+    //
+    //End of Ex iteration
+    
+    //The effective beam energy reached at the formation of the compound
+    EffectiveBeamEnergy=PostStepBeamKineticEnergy;
+    
+    //The final beam location when Ex is reached
+    TVector3 BeamLocation(PostStepBeamLocation);
+    
+    //The beam as a quadri-vector when Ex is reached
+    TLorentzVector BeamMomentumEnergy(PostStepBeamMomentum,EffectiveBeamEnergy+MassBeam);
+   
+    //
+    //Formation and decay of the compound nucleus
+    TLorentzVector CompoundMomentumEnergy=BeamMomentumEnergy+TargetMomentumEnergy;
+    const double InvariantMass=CompoundMomentumEnergy.M(); //this should be a constant as the Ex is fixed. However we might have small fluctuations arising from the algorithm of Ex (=position in the gas) determination
+    const double cm_angle=Mg24_ang_uniform->GetRandom(0,TMath::Pi()); //Emission angle in the center of mass of the decay
+    const double cm_angle_phi=RandomGen.Uniform(0,2*TMath::Pi()); //Emission phi angle in the center of mass of the decay
+    const double MomentumCmModule=sqrt((pow(InvariantMass,4)+pow((pow(MassEjectile,2)-pow(MassResidual,2)),2)-2*pow(InvariantMass,2)*(pow(MassEjectile,2)+pow(MassResidual,2)))/(4*pow(InvariantMass,2))); //Module of the momentum in the cm
+    TVector3 EjectileMomentumCm(MomentumCmModule*sin(cm_angle)*cos(cm_angle_phi),MomentumCmModule*sin(cm_angle)*sin(cm_angle_phi),MomentumCmModule*cos(cm_angle)); //Momentum of the ejectile in the cm
+    TLorentzVector EjectileMomentumEnergy(EjectileMomentumCm,sqrt(pow(MomentumCmModule,2)+pow(MassEjectile,2))); //Quadri-Momentum of the ejectile in the cm
+    TLorentzVector ResidualMomentumEnergy(-EjectileMomentumCm,sqrt(pow(MomentumCmModule,2)+pow(MassResidual,2))); //Quadri-Momentum of the residual in the cm
+    //Saving quantities in the cms
+    const double EjectileKinEnergyCms=EjectileMomentumEnergy.E()-MassEjectile;
+    const double ResidualKinEnergyCms=ResidualMomentumEnergy.E()-MassResidual;
+    const double EjectileThetaCms=EjectileMomentumEnergy.Theta();
+    const double ResidualThetaCms=ResidualMomentumEnergy.Theta();
+    //Conversion of quantities in the lab frame
+    EjectileMomentumEnergy.Boost(CompoundMomentumEnergy.BoostVector()); //Boosting the ejectile cm momentum in the lab frame
+    ResidualMomentumEnergy.Boost(CompoundMomentumEnergy.BoostVector()); //Boosting the residual cm momentum in the lab frame
+    TVector3 EjectileLocation(BeamLocation);
+    TVector3 ResidualLocation(BeamLocation);
+    
+#ifdef GRAPHICAL_MODE
+    gEve->AddElement(TrackBeam);
+    gEve->Redraw3D();
+#endif    
+    
+#ifdef VERBOSE_MODE
+    printf("*** Decay of the compound nucleus\n");
+    printf("Theta_cm: %.2f deg\n", cm_angle*TMath::RadToDeg());
+    printf("Ejectile theta: %.2f deg\n", EjectileMomentumEnergy.Theta()*TMath::RadToDeg());
+    printf("Ejectile Ekin: %.2f MeV\n", EjectileMomentumEnergy.E()-MassEjectile);
+    printf("Residual theta: %.2f deg\n", ResidualMomentumEnergy.Theta()*TMath::RadToDeg());
+    printf("Residual Ekin: %.2f MeV\n", ResidualMomentumEnergy.E()-MassResidual);
+    printf("**************************************************\n\n");
+    getchar();
+#endif    
+    
+    //
+    //Detection process
+    //The process terminates with: 
+    // (1) detection of a fragment 
+    // (2) the fragment escapes from the mother volume
+    // (3) the fragment stops in the gas
+    //The process is always binary.
+    //
+#ifdef WRITING_TO_DISK
+    cluster_fEx=EffectiveCompoundEx; //Excitation energy of the compound
+#endif
+    //
+    //Ejectile
+    //
+#ifdef WRITING_TO_DISK    
+    cluster_fmulti=0;
+    cluster_fmulti_detected=0;
+    cluster_fIsDetected[cluster_fmulti]=false;
+    cluster_fnumtel[cluster_fmulti]=-1;
+    cluster_fnumstripf[cluster_fmulti]=-1;
+    cluster_fnumstripb[cluster_fmulti]=-1;
+    cluster_fZ[cluster_fmulti]=Zejectile;
+    cluster_fA[cluster_fmulti]=Aejectile;
+    cluster_fKinEnergyOrigin[cluster_fmulti]=EjectileMomentumEnergy.E()-MassEjectile;
+    cluster_fThetaOrigin[cluster_fmulti]=EjectileMomentumEnergy.Theta();
+    cluster_fPhiOrigin[cluster_fmulti]=EjectileMomentumEnergy.Phi();
+    cluster_fKinEnergyOriginCms[cluster_fmulti]=EjectileKinEnergyCms;
+    cluster_fThetaOriginCms[cluster_fmulti]=EjectileThetaCms;
+    cluster_fKinEnergy[cluster_fmulti]=-9999;
+    cluster_fXDetHit[cluster_fmulti]=-9999;
+    cluster_fYDetHit[cluster_fmulti]=-9999;
+    cluster_fZDetHit[cluster_fmulti]=-9999;
+#endif
+    //
+    //Pre and Post step quantities
+    double EjectileDetectionStep=CalculationStep;
+    //
+    double PreStepEjectileMomentumModule=EjectileMomentumEnergy.P();
+    TVector3 PreStepEjectileMomentum(EjectileMomentumEnergy.Vect());
+    TVector3 PreStepEjectileDirection(PreStepEjectileMomentum.Unit());
+    TVector3 PreStepEjectileLocation(EjectileLocation);
+    double PreStepEjectileKineticEnergy=EjectileMomentumEnergy.E()-MassEjectile;
+    
+    //
+    double PostStepEjectileMomentumModule;
+    TVector3 PostStepEjectileMomentum;
+    TVector3 PostStepEjectileDirection;
+    TVector3 PostStepEjectileLocation;
+    double PostStepEjectileKineticEnergy;
+    //
+#ifdef GRAPHICAL_MODE
+    TEveStraightLineSet * TrackEjectile = new TEveStraightLineSet("TrackEjectile");
+    TrackEjectile->SetMainColor(kGreen+1);
+#endif
+    //Main iteration for the detection process
+    while(1) {
+      //Check if the particle is inside the mother volume
+      if(fabs(PreStepEjectileLocation.X())>LimitX || fabs(PreStepEjectileLocation.Y())>LimitY || fabs(PreStepEjectileLocation.Z())>LimitZ || PreStepEjectileLocation.Z()<0) {
+        //The particle is not detected --> all detector numbers are -1 but the "Origin" quantities are set anyway
+#ifdef VERBOSE_MODE
+          printf("*** Particle escaped from the mother volume!\n"); 
+          printf("**************************************************\n\n");
+          getchar();
+#endif
+        break;
+      }
+      
+      //
+      //Calculation of energy degradation and straggling
+      //
+      //Energy loss in the current step
+      double ELossStep = LISELossModule.GetEnergyLoss(Zejectile,Aejectile,PreStepEjectileKineticEnergy,Form("%s%.0fmbar",GasMaterial.c_str(),GasPressure),EjectileDetectionStep*cmToum); //Energy loss in the current step of calculation
+      //Energy straggling in the current step
+      double EnergyStraggling=0.; //NOTE: Here we must add an energy straggling
+      //Angular straggling in the current step
+      double AngularStraggling=0.; //NOTE: Here we must add an angular straggling
+      //
+      //Calculation of the post-step quantities
+      PostStepEjectileKineticEnergy=PreStepEjectileKineticEnergy-ELossStep+EnergyStraggling; //calculation of degraded energy
+      PostStepEjectileMomentumModule=sqrt(pow(PostStepEjectileKineticEnergy+MassEjectile,2)-pow(MassEjectile,2)); //calculation of degraded momentum module
+      PostStepEjectileMomentum=PostStepEjectileMomentumModule*PreStepEjectileDirection; //calculation of degraded momentum vector
+      PostStepEjectileMomentum.Rotate(AngularStraggling,PreStepEjectileDirection.Orthogonal()); //angle straggling (rotation around a vector perpendicular to the pre-step vector) 
+      PostStepEjectileMomentum.Rotate(RandomGen.Uniform(0,TMath::Pi()),PreStepEjectileDirection); //randomization of the straggling direction around the original vector
+      PostStepEjectileDirection=PostStepEjectileMomentum.Unit(); //Post-step vector
+      //Calculation of beam position after the calculation step
+      PostStepEjectileLocation=PreStepEjectileLocation+EjectileDetectionStep*PostStepEjectileDirection;
+
+#ifdef VERBOSE_MODE
+      printf("*** Calculation Step Ejectile\n");
+      printf("material: %s\n", GasMaterial.c_str());
+      printf("ELoss step: %f MeV\n", ELossStep);
+      printf("Straggling angle: %f deg\n", AngularStraggling*TMath::RadToDeg());
+      printf("Ekin: %f MeV\n", PostStepEjectileKineticEnergy);
+      printf("Momentum pre step: (%f, %f, %f) MeV/c\n", PreStepEjectileMomentum.X(), PreStepEjectileMomentum.Y(), PreStepEjectileMomentum.Z());
+      printf("Momentum post step: (%f, %f, %f) MeV/c\n", PostStepEjectileMomentum.X(), PostStepEjectileMomentum.Y(), PostStepEjectileMomentum.Z());
+      printf("Ejectile location: (%f, %f, %f) cm\n", PostStepEjectileLocation.X(), PostStepEjectileLocation.Y(), PostStepEjectileLocation.Z());
+      printf("**************************************************\n\n");
+#endif
+      
+      //
+      //Check if the particle stopped in the gas
+      if(PostStepEjectileKineticEnergy<1E-7) {
+        //The particle stopped in the gas --> all detector numbers are -1 but the "Origin" quantities are set anyway
+#ifdef VERBOSE_MODE
+          printf("*** Particle stopped in the gas volume!\n"); 
+          printf("**************************************************\n\n");
+          getchar();
+#endif
+        break;
+      }
+      //
+      
+      //
+      //Check if the particle is detected
+      //We check if the particle angle is inside the coverage of the detector
+      //If the particle is not inside the coverage, the iteration continues and a successive step is calculated
+      //If the particle is inside the coverage, we evaluate the distance between the particle location and the hit point on the surface of the detector
+      //If such distance is lower than 1/10 of the calculation step, the particle is detected, if is larger the iteration continues and a successive step is calculated
+      //If we pass the detector without reaching a distance lower than 1/10 of the calculation step, the iteration is repeated with half of the previous step.
+      if(PreStepEjectileKineticEnergy>=DetectorThreshold && DetectorCluster->IsInside(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z())) 
+      {
+        //The particle identifies a direction within the detector coverage
+        //
+        //Getting the detector whose direction is identified by the particle
+        int TheDetectorIndex = DetectorCluster->GetDetectorIndex(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z());
+        TDetectionUnit * TheDetector = DetectorCluster->GetDetector(TheDetectorIndex);
+        //Calculation of the distance between the potential hit point and the particle
+        TVector3 HitPoint(((TStripDetector*)TheDetector)->GetImpactPointLab(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z()));
+        TVector3 HitPointRelative = HitPoint-PostStepEjectileLocation; //vector identifying the hit point with respect to the post step location
+        double HitPointDistance=HitPointRelative.Dot(PostStepEjectileDirection); //Projection of the distance vector along the particle direction
+        //
+        //Evaluation of the distance
+        if(fabs(HitPointDistance)<0.1*CalculationStep) {
+          //The particle is at the surface of the detector
+#ifdef VERBOSE_MODE
+          printf("*** Particle detected!\n"); 
+          printf("**************************************************\n\n");
+          DetectorCluster->ShowImpactPoint(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PostStepEjectileLocation.X(),PostStepEjectileLocation.Y(),PostStepEjectileLocation.Z());
+          gPad->Modified();
+          gPad->Update();
+          gPad->Modified();
+          gPad->Update();
+          getchar();
+#endif
+#ifdef WRITING_TO_DISK
+          cluster_fnumtel[cluster_fmulti]=TheDetectorIndex+1;
+          cluster_fnumstripf[cluster_fmulti]=((TStripDetector*)TheDetector)->GetStripFront(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z());
+          cluster_fnumstripb[cluster_fmulti]=((TStripDetector*)TheDetector)->GetStripBack(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z());
+          //
+          //Check if interstrip
+          if(cluster_fnumstripf[cluster_fmulti]>=0 && cluster_fnumstripb[cluster_fmulti]>=0) {   
+            //Not interstrip event        
+            cluster_fmulti_detected++;
+            cluster_fIsDetected[cluster_fmulti]=true;
+            cluster_fKinEnergy[cluster_fmulti]=PostStepEjectileKineticEnergy+RandomGen.Gaus(0,PostStepEjectileKineticEnergy*DetectorEres/2.355);
+            cluster_fXDetHit[cluster_fmulti]=HitPoint.X();
+            cluster_fYDetHit[cluster_fmulti]=HitPoint.Y();
+            cluster_fZDetHit[cluster_fmulti]=HitPoint.Z();
+          }
+#endif
+          //
+          break;
+        }
+        //
+        //Check if particle passed the detector without being detected
+        if(HitPointDistance<0) {
+          //The particle crossed the detector, we undo the last step and perform a step of 1/2 length
+          EjectileDetectionStep/=2.;
+          //
+          //Undo the last step
+          continue;
+        }
+      }
+      //
+      
+      //The particle is not inside or the direction or is inside but the distance is greater than 1/10, I process the next step by using the standard calculation step
+      EjectileDetectionStep=CalculationStep;
+      //Finalizing the step -> setting the pre step quantities to the current post step ones
+#ifdef GRAPHICAL_MODE
+      TrackEjectile->AddLine(-PreStepEjectileLocation.Y(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Z(),-PostStepEjectileLocation.Y(),PostStepEjectileLocation.X(),PostStepEjectileLocation.Z());
+#endif      
+      PreStepEjectileKineticEnergy=PostStepEjectileKineticEnergy;
+      PreStepEjectileMomentumModule=PostStepEjectileMomentumModule;
+      PreStepEjectileMomentum=PostStepEjectileMomentum;
+      PreStepEjectileDirection=PostStepEjectileDirection;
+      PreStepEjectileLocation=PostStepEjectileLocation;
+    } //End of the main iteration for the detection process
+#ifdef GRAPHICAL_MODE
+    gEve->AddElement(TrackEjectile);
+    gEve->Redraw3D();
+#endif
+    //
+    
+#ifdef WRITING_TO_DISK
+    cluster_fmulti++; //NOTE: in the current version of the program, the multiplicity is always equal to the number of particles detected
+#endif
+    //
+    //Residual
+    //
+#ifdef WRITING_TO_DISK
+    cluster_fIsDetected[cluster_fmulti]=false;
+    cluster_fnumtel[cluster_fmulti]=-1;
+    cluster_fnumstripf[cluster_fmulti]=-1;
+    cluster_fnumstripb[cluster_fmulti]=-1;
+    cluster_fZ[cluster_fmulti]=Zresidual;
+    cluster_fA[cluster_fmulti]=Aresidual;
+    cluster_fKinEnergyOrigin[cluster_fmulti]=ResidualMomentumEnergy.E()-MassResidual;
+    cluster_fThetaOrigin[cluster_fmulti]=ResidualMomentumEnergy.Theta();
+    cluster_fPhiOrigin[cluster_fmulti]=ResidualMomentumEnergy.Phi();
+    cluster_fKinEnergyOriginCms[cluster_fmulti]=ResidualKinEnergyCms;
+    cluster_fThetaOriginCms[cluster_fmulti]=ResidualThetaCms;    
+    cluster_fKinEnergy[cluster_fmulti]=-9999;
+    cluster_fXDetHit[cluster_fmulti]=-9999;
+    cluster_fYDetHit[cluster_fmulti]=-9999;
+    cluster_fZDetHit[cluster_fmulti]=-9999;
+#endif
+    //
+    //Pre and Post step quantities
+    double ResidualDetectionStep=CalculationStep;
+    //
+    double PreStepResidualMomentumModule=ResidualMomentumEnergy.P();
+    TVector3 PreStepResidualMomentum(ResidualMomentumEnergy.Vect());
+    TVector3 PreStepResidualDirection(PreStepResidualMomentum.Unit());
+    TVector3 PreStepResidualLocation(ResidualLocation);
+    double PreStepResidualKineticEnergy=ResidualMomentumEnergy.E()-MassResidual;
+    
+    //
+    double PostStepResidualMomentumModule;
+    TVector3 PostStepResidualMomentum;
+    TVector3 PostStepResidualDirection;
+    TVector3 PostStepResidualLocation;
+    double PostStepResidualKineticEnergy;
+    //
+    //
+#ifdef GRAPHICAL_MODE
+    TEveStraightLineSet * TrackResidual = new TEveStraightLineSet("TrackResidual");
+    TrackResidual->SetMainColor(kMagenta);
+#endif
+    //Main iteration for the detection process
+    while(1) {
+      //Check if the particle is inside the mother volume
+      if(fabs(PreStepResidualLocation.X())>LimitX || fabs(PreStepResidualLocation.Y())>LimitY || fabs(PreStepResidualLocation.Z())>LimitZ || PreStepResidualLocation.Z()<0) {
+        //The particle is not detected --> all detector numbers are -1 but the "Origin" quantities are set anyway
+#ifdef VERBOSE_MODE
+          printf("*** Particle escaped from the mother volume!\n"); 
+          printf("**************************************************\n\n");
+          getchar();
+#endif
+        break;
+      }
+      
+      //
+      //Calculation of energy degradation and straggling
+      //
+      //Energy loss in the current step
+      double ELossStep = LISELossModule.GetEnergyLoss(Zresidual,Aresidual,PreStepResidualKineticEnergy,Form("%s%.0fmbar",GasMaterial.c_str(),GasPressure),ResidualDetectionStep*cmToum); //Energy loss in the current step of calculation
+      //Energy straggling in the current step
+      double EnergyStraggling=0.; //NOTE: Here we must add an energy straggling
+      //Angular straggling in the current step
+      double AngularStraggling=0.; //NOTE: Here we must add an angular straggling
+      //
+      //Calculation of the post-step quantities
+      PostStepResidualKineticEnergy=PreStepResidualKineticEnergy-ELossStep+EnergyStraggling; //calculation of degraded energy
+      PostStepResidualMomentumModule=sqrt(pow(PostStepResidualKineticEnergy+MassResidual,2)-pow(MassResidual,2)); //calculation of degraded momentum module
+      PostStepResidualMomentum=PostStepResidualMomentumModule*PreStepResidualDirection; //calculation of degraded momentum vector
+      PostStepResidualMomentum.Rotate(AngularStraggling,PreStepResidualDirection.Orthogonal()); //angle straggling (rotation around a vector perpendicular to the pre-step vector) 
+      PostStepResidualMomentum.Rotate(RandomGen.Uniform(0,TMath::Pi()),PreStepResidualDirection); //randomization of the straggling direction around the original vector
+      PostStepResidualDirection=PostStepResidualMomentum.Unit(); //Post-step vector
+      //Calculation of beam position after the calculation step
+      PostStepResidualLocation=PreStepResidualLocation+ResidualDetectionStep*PostStepResidualDirection;
+
+#ifdef VERBOSE_MODE
+      printf("*** Calculation Step Residual\n");
+      printf("material: %s\n", GasMaterial.c_str());
+      printf("ELoss step: %f MeV\n", ELossStep);
+      printf("Straggling angle: %f deg\n", AngularStraggling*TMath::RadToDeg());
+      printf("Ekin: %f MeV\n", PostStepResidualKineticEnergy);
+      printf("Momentum pre step: (%f, %f, %f) MeV/c\n", PreStepResidualMomentum.X(), PreStepResidualMomentum.Y(), PreStepResidualMomentum.Z());
+      printf("Momentum post step: (%f, %f, %f) MeV/c\n", PostStepResidualMomentum.X(), PostStepResidualMomentum.Y(), PostStepResidualMomentum.Z());
+      printf("Residual location: (%f, %f, %f) cm\n", PostStepResidualLocation.X(), PostStepResidualLocation.Y(), PostStepResidualLocation.Z());
+      printf("**************************************************\n\n");
+#endif
+      
+      //
+      //Check if the particle stopped in the gas
+      if(PostStepResidualKineticEnergy<1E-7) {
+        //The particle stopped in the gas --> all detector numbers are -1 but the "Origin" quantities are set anyway
+#ifdef VERBOSE_MODE
+          printf("*** Particle stopped in the gas volume!\n"); 
+          printf("**************************************************\n\n");
+          getchar();
+#endif
+        break;
+      }
+      //
+      
+      //
+      //Check if the particle is detected
+      //We check if the particle angle is inside the coverage of the detector
+      //If the particle is not inside the coverage, the iteration continues and a successive step is calculated
+      //If the particle is inside the coverage, we evaluate the distance between the particle location and the hit point on the surface of the detector
+      //If such distance is lower than 1/10 of the calculation step, the particle is detected, if is larger the iteration continues and a successive step is calculated
+      //If we pass the detector without reaching a distance lower than 1/10 of the calculation step, the iteration is repeated with half of the previous step.
+      if(PreStepResidualKineticEnergy>=DetectorThreshold && DetectorCluster->IsInside(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z())) 
+      {
+        //The particle identifies a direction within the detector coverage
+        //
+        //Getting the detector whose direction is identified by the particle
+        int TheDetectorIndex = DetectorCluster->GetDetectorIndex(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z());
+        TDetectionUnit * TheDetector = DetectorCluster->GetDetector(TheDetectorIndex);
+        //Calculation of the distance between the potential hit point and the particle
+        TVector3 HitPoint(((TStripDetector*)TheDetector)->GetImpactPointLab(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z()));
+        TVector3 HitPointRelative = HitPoint-PostStepResidualLocation; //vector identifying the hit point with respect to the post step location
+        double HitPointDistance=HitPointRelative.Dot(PostStepResidualDirection); //Projection of the distance vector along the particle direction
+        //
+        //Evaluation of the distance
+        if(fabs(HitPointDistance)<0.1*CalculationStep) {
+          //The particle is at the surface of the detector
+#ifdef VERBOSE_MODE
+          printf("*** Particle detected!\n"); 
+          printf("**************************************************\n\n");
+          DetectorCluster->ShowImpactPoint(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PostStepResidualLocation.X(),PostStepResidualLocation.Y(),PostStepResidualLocation.Z());
+          gPad->Modified();
+          gPad->Update();
+          gPad->Modified();
+          gPad->Update();
+          getchar();
+#endif
+#ifdef WRITING_TO_DISK
+          cluster_fnumtel[cluster_fmulti]=TheDetectorIndex+1;
+          cluster_fnumstripf[cluster_fmulti]=((TStripDetector*)TheDetector)->GetStripFront(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z());
+          cluster_fnumstripb[cluster_fmulti]=((TStripDetector*)TheDetector)->GetStripBack(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z());
+          //
+          //Check if interstrip
+          if(cluster_fnumstripf[cluster_fmulti]>=0 && cluster_fnumstripb[cluster_fmulti]>=0) {   
+            //Not interstrip event  
+            cluster_fmulti_detected++;
+            cluster_fIsDetected[cluster_fmulti]=true;            
+            cluster_fKinEnergy[cluster_fmulti]=PostStepResidualKineticEnergy+RandomGen.Gaus(0,PostStepResidualKineticEnergy*DetectorEres/2.355);
+            cluster_fXDetHit[cluster_fmulti]=HitPoint.X();
+            cluster_fYDetHit[cluster_fmulti]=HitPoint.Y();
+            cluster_fZDetHit[cluster_fmulti]=HitPoint.Z();
+          }
+#endif
+          //
+          break;
+        }
+        //
+        //Check if particle passed the detector without being detected
+        if(HitPointDistance<0) {
+          //The particle crossed the detector, we undo the last step and perform a step of 1/2 length
+          ResidualDetectionStep/=2.;
+          //
+          //Undo the last step
+          continue;
+        }
+      }
+      //
+      
+      //The particle is not inside or the direction or is inside but the distance is greater than 1/10, I process the next step by using the standard calculation step
+      ResidualDetectionStep=CalculationStep;
+      //Finalizing the step -> setting the pre step quantities to the current post step ones
+#ifdef GRAPHICAL_MODE
+      TrackResidual->AddLine(-PreStepResidualLocation.Y(),PreStepResidualLocation.X(),PreStepResidualLocation.Z(),-PostStepResidualLocation.Y(),PostStepResidualLocation.X(),PostStepResidualLocation.Z());
+#endif
+      PreStepResidualKineticEnergy=PostStepResidualKineticEnergy;
+      PreStepResidualMomentumModule=PostStepResidualMomentumModule;
+      PreStepResidualMomentum=PostStepResidualMomentum;
+      PreStepResidualDirection=PostStepResidualDirection;
+      PreStepResidualLocation=PostStepResidualLocation;
+      
+    } //End of the main iteration for the detection process
+#ifdef GRAPHICAL_MODE
+    gEve->AddElement(TrackResidual);
+    gEve->Redraw3D();
+#endif
+    //    
+    
+#ifdef WRITING_TO_DISK
+    cluster_fmulti++; //NOTE: in the current version of the program, the multiplicity is always equal to the number of particles detected
+    
+    //
+    //Closing event (writing the event on trees)
+    TreeDetected->Fill();
+#endif
+    //
+  }
+  
+  //Writing trees on file
+#ifdef WRITING_TO_DISK
+  TreeDetected->AutoSave();
+  FileOut->Close();
+#endif
+  
+  //End Message
+#ifdef WRITING_TO_DISK
+  printf("\n\nFile %s produced.\nThanks for using the REX++ framework, Bye!\n",FileOutName.c_str());
+#endif
+  
+  return;   
+}
