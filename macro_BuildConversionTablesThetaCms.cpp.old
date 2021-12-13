@@ -210,14 +210,16 @@ void macro_BuildConversionTablesThetaCms()
       //
       for(int i=0; i<TheDetectors->fmulti; i++) {
         if(TheDetectors->fZ[i]==Zparticle && TheDetectors->fA[i]==Aparticle) {
-          if(TheDetectors->fnumdet[i]>=0 && TheDetectors->fnumstripf[i]>=0 && TheDetectors->fnumstripb[i]>=0) {
+          if(TheDetectors->fnumdet[i]>=0 && TheDetectors->fnumpixel[i]>=0) {
             if(KinematicSolution.compare("Hi")==0) {
               if(TheDetectors->fThetaOriginCms[i]>TMath::Pi()/2) continue;
             } else if(KinematicSolution.compare("Low")==0) {
               if(TheDetectors->fThetaOriginCms[i]<=TMath::Pi()/2) continue;
             }
-            (HistoKinEnergy[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumstripf[i]][TheDetectors->fnumstripb[i]]->Fill(TheDetectors->fKinEnergy[i]);
-            (HistoThetaOriginCms[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumstripf[i]][TheDetectors->fnumstripb[i]]->Fill(TheDetectors->fThetaOriginCms[i]);
+            const int numstripf=TheDetectors->fnumpixel[i]%16;
+            const int numstripb=TheDetectors->fnumpixel[i]/16;
+            (HistoKinEnergy[TheDetectors->fEx])[TheDetectors->fnumdet[i]][numstripf][numstripb]->Fill(TheDetectors->fKinEnergy[i]);
+            (HistoThetaOriginCms[TheDetectors->fEx])[TheDetectors->fnumdet[i]][numstripf][numstripb]->Fill(TheDetectors->fThetaOriginCms[i]);
           }
         }
       }

@@ -210,14 +210,14 @@ void macro_BuildConversionTables()
       //
       for(int i=0; i<TheDetectors->fmulti; i++) {
         if(TheDetectors->fZ[i]==Zparticle && TheDetectors->fA[i]==Aparticle) {
-          if(TheDetectors->fnumdet[i]>=0 && TheDetectors->fnumstripf[i]>=0 && TheDetectors->fnumstripb[i]>=0) {
+          if(TheDetectors->fnumdet[i]>=0 && TheDetectors->fnumpixel[i]>=0) {
             if(KinematicSolution.compare("Hi")==0) {
               if(TheDetectors->fThetaOriginCms[i]>TMath::Pi()/2) continue;
             } else if(KinematicSolution.compare("Low")==0) {
               if(TheDetectors->fThetaOriginCms[i]<=TMath::Pi()/2) continue;
             }
-            (HistoKinEnergy[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumstripf[i]][TheDetectors->fnumstripb[i]]->Fill(TheDetectors->fKinEnergy[i]);
-            (HistoKinEnergyOrigin[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumstripf[i]][TheDetectors->fnumstripb[i]]->Fill(TheDetectors->fKinEnergyOrigin[i]);
+            (HistoKinEnergy[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumpixel[i]]->Fill(TheDetectors->fKinEnergy[i]);
+            (HistoKinEnergyOrigin[TheDetectors->fEx])[TheDetectors->fnumdet[i]][TheDetectors->fnumpixel[i]]->Fill(TheDetectors->fKinEnergyOrigin[i]);
           }
         }
       }
