@@ -1035,17 +1035,19 @@ void REXppFramework::ProcessIterations()
           fevt->fnumdet[fevt->fmulti]=TheDetectorIndex;
           fevt->fnumpixel[fevt->fmulti]=TheDetector->GetPixel(PostStepEjectileDirection.Theta(),PostStepEjectileDirection.Phi(),PreStepEjectileLocation.X(),PreStepEjectileLocation.Y(),PreStepEjectileLocation.Z());
           //
-          //Check if interstrip
+          //Check if interstrip or something not in the active area of the detector
           if(fevt->fnumpixel[fevt->fmulti]>=0) {   
-            //Not interstrip event  
+            //We are in the active region of the detector  
             fevt->fmulti_detected++;
             fevt->fIsDetected[fevt->fmulti]=true;
             fevt->fKinEnergy[fevt->fmulti]=PostStepEjectileKineticEnergy+ (fDetectorEres>0 ? fRandomGen->Gaus(0,PostStepEjectileKineticEnergy*fDetectorEres/2.355) : 0);
-            fevt->fXDetHit[fevt->fmulti]=HitPoint.X();
-            fevt->fYDetHit[fevt->fmulti]=HitPoint.Y();
-            fevt->fZDetHit[fevt->fmulti]=HitPoint.Z();
           }
-          //
+          //If we are here means the particle hit a detector.
+          //We save the impact point on the detector even 
+          //if it didn't hit an active area of the detector.
+          fevt->fXDetHit[fevt->fmulti]=HitPoint.X();
+          fevt->fYDetHit[fevt->fmulti]=HitPoint.Y();
+          fevt->fZDetHit[fevt->fmulti]=HitPoint.Z();
           break;
         }
         //
@@ -1193,16 +1195,19 @@ void REXppFramework::ProcessIterations()
           fevt->fnumdet[fevt->fmulti]=TheDetectorIndex;
           fevt->fnumpixel[fevt->fmulti]=TheDetector->GetPixel(PostStepResidualDirection.Theta(),PostStepResidualDirection.Phi(),PreStepResidualLocation.X(),PreStepResidualLocation.Y(),PreStepResidualLocation.Z());
           //
-          //Check if interstrip
+          //Check if interstrip or something not in the active area of the detector
           if(fevt->fnumpixel[fevt->fmulti]>=0) {   
-            //Not interstrip event  
+            //We are in the active region of the detector  
             fevt->fmulti_detected++;
             fevt->fIsDetected[fevt->fmulti]=true;
             fevt->fKinEnergy[fevt->fmulti]=PostStepResidualKineticEnergy+ (fDetectorEres>0 ? fRandomGen->Gaus(0,PostStepResidualKineticEnergy*fDetectorEres/2.355) : 0);
-            fevt->fXDetHit[fevt->fmulti]=HitPoint.X();
-            fevt->fYDetHit[fevt->fmulti]=HitPoint.Y();
-            fevt->fZDetHit[fevt->fmulti]=HitPoint.Z();
           }
+          //If we are here means the particle hit a detector.
+          //We save the impact point on the detector even 
+          //if it didn't hit an active area of the detector.
+          fevt->fXDetHit[fevt->fmulti]=HitPoint.X();
+          fevt->fYDetHit[fevt->fmulti]=HitPoint.Y();
+          fevt->fZDetHit[fevt->fmulti]=HitPoint.Z();
           //
           break;
         }
